@@ -1,0 +1,70 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Design system — "沉静的专业感"
+   Subject: 警察职业心理测评。冷静、克制、有荣誉感。
+   ============================================================ */
+
+@theme {
+	/* Core palette */
+	--color-ink: #1e2a4a; /* 深靛蓝 — 主色，夜值的冷静 */
+	--color-ink-700: #2c3c63;
+	--color-ink-500: #4a5b85;
+	--color-ink-300: #8b97b5;
+
+	--color-brass: #e0a458; /* 琥珀金 — 警徽/荣誉感，唯一暖色点缀 */
+	--color-brass-soft: #f0d4a8;
+
+	--color-canvas: #f7f8fa; /* 极浅冷灰背景 */
+	--color-surface: #ffffff;
+	--color-line: #e6e9f0;
+
+	/* Level colors */
+	--color-low: #d97642; /* 暖橙 — 低满意度 */
+	--color-mid: #4a5b85; /* 靛蓝 — 中满意度 */
+	--color-high: #3f8f6b; /* 松绿 — 高满意度 */
+
+	/* Type */
+	--font-sans:
+		'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+		'Microsoft YaHei', sans-serif;
+	--font-num: 'Inter', ui-monospace, 'SF Mono', monospace;
+}
+
+:root {
+	color-scheme: light;
+}
+
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+	background: var(--color-canvas);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+/* Tabular numbers for scores */
+.tnum {
+	font-family: var(--font-num);
+	font-feature-settings: 'tnum' 1;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* Visible keyboard focus */
+:focus-visible {
+	outline: 2px solid var(--color-brass);
+	outline-offset: 2px;
+}
