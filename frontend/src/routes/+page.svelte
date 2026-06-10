@@ -18,7 +18,8 @@
 		savedSummary,
 		isComplete
 	} from '$lib/stores/survey.svelte';
-	import { mockPredict, type PredictionResult } from '$lib/utils/predict';
+	import { type PredictionResult } from '$lib/utils/predict';
+	import { predict } from '$lib/utils/api';
 
 	type Phase = 'welcome' | 'intro' | 'survey' | 'result';
 	let phase = $state<Phase>('welcome');
@@ -92,10 +93,18 @@
 		phase = 'survey';
 	}
 
-	function finish() {
-		if (!isComplete()) return;
-		result = mockPredict(survey.answers);
-		phase = 'result';
+	let predicting = $state(false);
+
+	async function finish() {
+		if (!isComplete() || predicting) return;
+		predicting = true;
+		try {
+			const { result: r } = await predict(survey.answers);
+			result = r;
+			phase = 'result';
+		} finally {
+			predicting = false;
+		}
 	}
 
 	function restart() {
@@ -261,9 +270,18 @@
 						<button
 							type="button"
 							onclick={finish}
-							class="rounded-xl bg-[var(--color-ink)] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-ink-700)]"
+							disabled={predicting}
+							class="flex items-center gap-2 rounded-xl bg-[var(--color-ink)] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-ink-700)] disabled:cursor-not-allowed disabled:opacity-60"
 						>
-							查看结果
+							{#if predicting}
+								<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+								</svg>
+								预测中…
+							{:else}
+								查看结果
+							{/if}
 						</button>
 					{:else}
 						<button
