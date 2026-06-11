@@ -91,8 +91,31 @@ export function computeDimensions(answers: Record<string, number | string>): Dim
 	return out;
 }
 
-function rand(min: number, max: number): number {
-	return min + Math.random() * (max - min);
+/** 确定性伪随机数生成器（mulberry32）。同一种子产生同一序列。 */
+function mulberry32(seed: number): () => number {
+	let a = seed >>> 0;
+	return () => {
+		a |= 0;
+		a = (a + 0x6d2b79f5) | 0;
+		let t = Math.imul(a ^ (a >>> 15), 1 | a);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+/** 从作答内容派生一个稳定的 32 位种子（FNV-1a 哈希）。 */
+function seedFromAnswers(answers: Record<string, number | string>): number {
+	// 按键排序后拼接，保证与键的遍历顺序无关，相同作答得到相同种子
+	const str = Object.keys(answers)
+		.sort()
+		.map((k) => `${k}=${answers[k]}`)
+		.join('|');
+	let h = 0x811c9dc5;
+	for (let i = 0; i < str.length; i++) {
+		h ^= str.charCodeAt(i);
+		h = Math.imul(h, 0x01000193);
+	}
+	return h >>> 0;
 }
 
 /**
@@ -101,6 +124,10 @@ function rand(min: number, max: number): number {
  */
 export function mockPredict(answers: Record<string, number | string>): PredictionResult {
 	const dimensions = computeDimensions(answers);
+
+	// 由作答内容派生的确定性随机源：相同作答 → 相同噪声 → 结果可复现
+	const next = mulberry32(seedFromAnswers(answers));
+	const rand = (min: number, max: number) => min + next() * (max - min);
 
 	// 加权：组织公平感与组织认同感权重略高
 	const weights: Record<string, number> = {
