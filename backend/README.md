@@ -46,10 +46,15 @@ brew install libomp
 
 ```bash
 source ../.venv/bin/activate
-python scripts/train.py --data /path/to/软著数据.xlsx
+python scripts/train.py /path/to/软著数据.xlsx
 ```
 
-当前模型指标（5 折交叉验证）：MAE ≈ 0.33，R² ≈ 0.52；训练样本 4271 条。
+当前模型指标（5 折 out-of-fold）：MAE ≈ 0.33，R² ≈ 0.50；训练样本 4271 条。
+
+模型采用样本加权（离均值越远权重越大，并对稀少的高分样本额外加权），
+缓解树模型的"向均值回归"，使两端预测更准、高满意度人群更易被识别。
+三档阈值（低/中/高）由 OOF 预测自动搜索得到，在整体准确率不低于 65%
+的前提下让三档召回尽量均衡（当前各档召回均约 62%–66%）。
 
 ## 启动服务
 

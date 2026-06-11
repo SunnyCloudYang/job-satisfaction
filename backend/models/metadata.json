@@ -57,11 +57,21 @@
   "n_features": 53,
   "target": "满意度均分",
   "metrics": {
-    "cv_mae": 0.3282,
-    "cv_r2": 0.5193,
+    "cv_mae": 0.332,
+    "cv_r2": 0.5042,
+    "cv_acc": 0.6514,
+    "cv_recall": {
+      "低": 62.3,
+      "中": 66.3,
+      "高": 66.1
+    },
     "n_train": 4271
   },
   "model_type": "XGBoostRegressor",
+  "sample_weighting": {
+    "strength": 0.8,
+    "high_boost": 1.4
+  },
   "score_range": [
     1,
     5
@@ -73,8 +83,8 @@
     "max": 5.0
   },
   "class_thresholds": {
-    "low_mid": 2.975,
-    "mid_high": 3.975
+    "low_mid": 3.025,
+    "mid_high": 3.8
   },
   "class_distribution": {
     "中": 2527,

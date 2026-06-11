@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import mean_absolute_error, r2_score
-from sklearn.model_selection import KFold, cross_val_predict, train_test_split
+from sklearn.model_selection import KFold, train_test_split
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BACKEND = os.path.dirname(HERE)
@@ -26,6 +26,62 @@ from app import schema  # noqa: E402
 
 MODELS_DIR = os.path.join(BACKEND, "models")
 DEFAULT_DATA = "/Volumes/WenshuSpace/软著数据.xlsx"
+
+# 样本加权（缓解向均值回归 + 抬升稀少的高分样本）。
+# 经 5 折 OOF 对比，(strength=0.8, high_boost=1.4) 在精度损失最小的前提下
+# 明显改善两端偏差与高档召回。
+WEIGHT_STRENGTH = 0.8
+WEIGHT_HIGH_BOOST = 1.4
+HIGH_CUTOFF = 3.975  # 高分样本判定线（仅用于加权）
+MIN_ACC = 0.65       # 阈值搜索时的整体准确率下限
+
+
+def make_weights(y: np.ndarray) -> np.ndarray:
+    """离均值越远权重越大；高分样本额外加权。"""
+    w = 1.0 + WEIGHT_STRENGTH * np.abs(y - y.mean()) / y.std()
+    w[y >= HIGH_CUTOFF] *= WEIGHT_HIGH_BOOST
+    return w
+
+
+def _to_class(v: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    out = np.full(v.shape, "中", dtype=object)
+    out[v < lo] = "低"
+    out[v >= hi] = "高"
+    return out
+
+
+def tune_thresholds(y: np.ndarray, yp: np.ndarray) -> tuple[float, float]:
+    """基于 OOF 预测搜索阈值：在整体 acc>=MIN_ACC 的前提下最大化三档 macro 召回。
+
+    若没有任何阈值满足 acc 下限，则回退到 acc 最高的阈值。
+    """
+    ct = _to_class(y, 2.975, 3.975)
+    best = None        # 满足 acc 下限中 macro 最优
+    fallback = None    # 全局 acc 最优
+    for lo in np.arange(2.70, 3.16, 0.025):
+        for hi in np.arange(3.55, 4.16, 0.025):
+            if hi <= lo + 0.2:
+                continue
+            cp = _to_class(yp, lo, hi)
+            recs = [float((cp[ct == l] == l).mean()) for l in ["低", "中", "高"]]
+            macro = float(np.mean(recs))
+            acc = float((ct == cp).mean())
+            if fallback is None or acc > fallback[0]:
+                fallback = (acc, lo, hi)
+            if acc >= MIN_ACC and (best is None or macro > best[0]):
+                best = (macro, lo, hi)
+    chosen = best if best is not None else fallback
+    return round(float(chosen[1]), 3), round(float(chosen[2]), 3)
+
+
+def oof_predict(params: dict, X: np.ndarray, y: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """带样本权重的 5 折 out-of-fold 预测。"""
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    pred = np.zeros_like(y, dtype=float)
+    for tr, te in kf.split(X):
+        m = xgb.XGBRegressor(**params).fit(X[tr], y[tr], sample_weight=w[tr])
+        pred[te] = m.predict(X[te])
+    return np.clip(pred, 1.0, 5.0)
 
 
 def build_matrix(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -75,22 +131,34 @@ def main() -> None:
         n_jobs=-1,
     )
 
-    # 5 折交叉验证评估泛化能力
-    kf = KFold(n_splits=5, shuffle=True, random_state=42)
-    cv_pred = cross_val_predict(xgb.XGBRegressor(**params), X, y, cv=kf)
+    # 样本权重（缓解向均值回归）
+    w = make_weights(y)
+    print(f"  sample weights: min={w.min():.2f} max={w.max():.2f} mean={w.mean():.2f}")
+
+    # 5 折 out-of-fold（带权）评估泛化能力
+    cv_pred = oof_predict(params, X, y, w)
     cv_mae = mean_absolute_error(y, cv_pred)
     cv_r2 = r2_score(y, cv_pred)
-    print(f"\n5-fold CV:  MAE={cv_mae:.4f}  R2={cv_r2:.4f}")
+    print(f"\n5-fold OOF (weighted):  MAE={cv_mae:.4f}  R2={cv_r2:.4f}")
 
-    # holdout 再验证一次
-    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=42)
-    holdout = xgb.XGBRegressor(**params).fit(Xtr, ytr)
+    # 基于 OOF 预测搜索更均衡的三档阈值
+    cut_low_mid, cut_mid_high = tune_thresholds(y, cv_pred)
+    cp = _to_class(cv_pred, cut_low_mid, cut_mid_high)
+    ct = _to_class(y, 2.975, 3.975)
+    acc = float((ct == cp).mean())
+    recs = {l: round(float((cp[ct == l] == l).mean()) * 100, 1) for l in ["低", "中", "高"]}
+    print(f"Tuned thresholds: 低<{cut_low_mid}<=中<{cut_mid_high}<=高  "
+          f"acc={acc*100:.1f}%  召回={recs}")
+
+    # holdout 再验证一次（带权）
+    Xtr, Xte, ytr, yte, wtr, _ = train_test_split(X, y, w, test_size=0.2, random_state=42)
+    holdout = xgb.XGBRegressor(**params).fit(Xtr, ytr, sample_weight=wtr)
     yp = holdout.predict(Xte)
     print(f"Holdout :  MAE={mean_absolute_error(yte, yp):.4f}  R2={r2_score(yte, yp):.4f}")
 
-    # 用全量数据训练最终模型
+    # 用全量数据训练最终模型（带权）
     print("\nTraining final model on full data ...")
-    model = xgb.XGBRegressor(**params).fit(X, y)
+    model = xgb.XGBRegressor(**params).fit(X, y, sample_weight=w)
 
     os.makedirs(MODELS_DIR, exist_ok=True)
     model_path = os.path.join(MODELS_DIR, "model.json")
@@ -106,20 +174,8 @@ def main() -> None:
             arr = df[[cols[c] for c in dim.columns]].to_numpy(dtype=float)
             dim_baseline[dim.key] = round(float(arr.mean()) / sec.scale, 4)
 
-    # 分类阈值：用数据中各类别的均分边界推断
+    # 分类阈值已由 tune_thresholds 基于 OOF 预测搜索得到（cut_low_mid / cut_mid_high）
     cls_series = pd.Series(cls)
-    thresholds = {}
-    for label in ["低", "中", "高"]:
-        sub = y[cls_series.to_numpy() == label]
-        if len(sub):
-            thresholds[label] = [round(float(sub.min()), 3), round(float(sub.max()), 3)]
-    # 低/中、中/高 切分点（取相邻类别边界中点）
-    low_hi = thresholds.get("低", [1, 2])[1]
-    mid_lo = thresholds.get("中", [2, 3])[0]
-    mid_hi = thresholds.get("中", [3, 4])[1]
-    high_lo = thresholds.get("高", [4, 5])[0]
-    cut_low_mid = round((low_hi + mid_lo) / 2, 3)
-    cut_mid_high = round((mid_hi + high_lo) / 2, 3)
 
     metadata = {
         "feature_names": feat_names,
@@ -128,9 +184,15 @@ def main() -> None:
         "metrics": {
             "cv_mae": round(cv_mae, 4),
             "cv_r2": round(cv_r2, 4),
+            "cv_acc": round(acc, 4),
+            "cv_recall": recs,
             "n_train": int(len(df)),
         },
         "model_type": "XGBoostRegressor",
+        "sample_weighting": {
+            "strength": WEIGHT_STRENGTH,
+            "high_boost": WEIGHT_HIGH_BOOST,
+        },
         "score_range": [1, 5],
         "sample_stats": {
             "mean": round(float(y.mean()), 4),
