@@ -2,6 +2,8 @@
 	import type { PredictionResult } from '$lib/utils/predict';
 	import RadarChart from './RadarChart.svelte';
 	import ContributionBars from './ContributionBars.svelte';
+	import ModelDiagram from './ModelDiagram.svelte';
+	import { correlations, pathEffects } from '$lib/data/research';
 
 	let { result, onrestart }: { result: PredictionResult; onrestart: () => void } = $props();
 
@@ -73,8 +75,36 @@
 		</ul>
 	</section>
 
+	<!-- 区块五：研究依据 -->
+	<section class="rounded-3xl border border-[var(--color-line)] bg-[var(--color-surface)] p-6 shadow-sm">
+		<h2 class="mb-1 text-base font-semibold text-[var(--color-ink)]">研究依据</h2>
+		<p class="mb-4 text-xs text-[var(--color-ink-300)]">您的结果背后的作用机制</p>
+
+		<ModelDiagram showEffects={false} />
+
+		<p class="mt-3 text-sm leading-relaxed text-[var(--color-ink-500)]">
+			实证研究显示，组织公平感对工作满意度有显著正向影响（总效应 β={pathEffects.totalEffect}），其中一部分通过<span
+				class="font-medium text-[var(--color-ink)]">组织认同感</span
+			>这条中介路径起作用（{pathEffects.mediationDesc}，间接效应 {pathEffects.indirectEffect}）。而<span
+				class="font-medium text-[var(--color-ink)]">主管忠诚</span
+			>会负向调节这条路径——当对主管的忠诚很高时，组织公平感对认同感的推动作用反而被削弱。
+		</p>
+
+		<div class="mt-4 space-y-2">
+			{#each correlations as c (c.pair)}
+				<div class="flex items-center justify-between gap-3 text-sm">
+					<span class="text-[var(--color-ink-500)]">{c.pair}</span>
+					<span class="flex items-center gap-2">
+						<span class="tnum font-semibold text-[var(--color-ink)]">r={c.r}</span>
+						<span class="rounded-full bg-[var(--color-brass-soft)] px-2 py-0.5 text-[10px] text-[var(--color-ink)]">{c.note}</span>
+					</span>
+				</div>
+			{/each}
+		</div>
+	</section>
+
 	<p class="px-2 text-center text-xs leading-relaxed text-[var(--color-ink-300)]">
-		本结果由预测模型生成，仅供参考。当前为演示数据。
+		本结果由预测模型生成，作用机制参考相关实证研究，仅供参考。
 	</p>
 
 	<button
