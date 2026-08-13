@@ -110,11 +110,11 @@ gunicorn -w 4 -b 0.0.0.0:5001 "app.main:create_app()"
 
 ## 前端联调
 
-前端通过 `PUBLIC_API_BASE` 调用本服务的 `/api/predict` 接口：
+前端默认使用内置 mock，可独立作为静态站点运行。配置后端地址即可切换为真实预测：
 
 ```bash
 # frontend/.env
 PUBLIC_API_BASE=http://127.0.0.1:5001
 ```
 
-未配置或后端不可达时，前端会显示错误提示。
+后端不可达时前端会自动回退到 mock，保证可用性。

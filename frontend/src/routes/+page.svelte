@@ -113,17 +113,14 @@
 	}
 
 	let predicting = $state(false);
-	let predictError = $state<string | null>(null);
 
 	async function finish() {
 		if (!isComplete() || predicting) return;
 		predicting = true;
-		predictError = null;
 		try {
-			result = await predict(survey.answers);
+			const { result: r } = await predict(survey.answers);
+			result = r;
 			phase = 'result';
-		} catch (err) {
-			predictError = err instanceof Error ? err.message : '预测失败，请稍后重试';
 		} finally {
 			predicting = false;
 		}
@@ -417,15 +414,6 @@
 						{/if}
 					</div>
 				{/key}
-
-				{#if predictError}
-					<p
-						class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-700"
-						role="alert"
-					>
-						{predictError}
-					</p>
-				{/if}
 
 				<!-- 导航 -->
 				<div class="mt-6 flex items-center justify-between">
